@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -10,8 +10,6 @@ use directories::ProjectDirs;
 use sequoia_openpgp as openpgp;
 use serde::{Deserialize, Serialize};
 
-use openpgp::cert::prelude::*;
-use openpgp::constants::SymmetricAlgorithm;
 use openpgp::crypto::{Password, SessionKey};
 use openpgp::parse::Parse;
 use openpgp::parse::stream::{
@@ -19,7 +17,7 @@ use openpgp::parse::stream::{
 };
 use openpgp::policy::StandardPolicy;
 use openpgp::serialize::stream::{Armorer, Encryptor2, LiteralWriter, Message};
-use openpgp::types::CipherSuite;
+use openpgp::types::SymmetricAlgorithm;
 
 const SETTINGS_FILE: &str = "eulervault.toml";
 const SOLUTIONS_FILE: &str = "solutions.txt";
@@ -212,11 +210,11 @@ fn validate_filepath_pattern(pattern: &str) -> Result<()> {
 
 fn render_solution_path(pattern: &str, problem: u32) -> Result<PathBuf> {
     validate_filepath_pattern(pattern)?;
-    let grid = (problem - 1) / 100 + 1;
+    let problem_group = (problem - 1) / 100 + 1;
     let rendered = pattern
         .replace("%P", &format!("{problem:04}"))
         .replace("%p", &problem.to_string())
-        .replace("%g", &grid.to_string());
+        .replace("%g", &problem_group.to_string());
     Ok(repo_path(&rendered))
 }
 
@@ -281,7 +279,18 @@ fn master_password_path() -> Result<PathBuf> {
 }
 
 fn write_master_password(password: &str) -> Result<()> {
-    fs::write(master_password_path()?, password)?;
+    let path = master_password_path()?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(password.as_bytes())?;
     Ok(())
 }
 
@@ -359,7 +368,6 @@ fn encrypt_bytes_to_path(plaintext: &[u8], password: &str, destination: &Path) -
             message,
             std::iter::once(Password::from(password.to_string())),
         )
-        .cipher_suite(CipherSuite::P256)
         .symmetric_algo(SymmetricAlgorithm::AES256)
         .build()?;
         let mut literal = LiteralWriter::new(message).build()?;
@@ -377,8 +385,11 @@ fn decrypt_bytes_from_path(source: &Path, password: &str) -> Result<Vec<u8>> {
     let ciphertext =
         fs::read(source).with_context(|| format!("failed to read {}", source.display()))?;
     let policy = StandardPolicy::new();
-    let mut decryptor = DecryptorBuilder::from_bytes(&ciphertext)?
-        .with_policy(&policy, None, PasswordDecryptor::new(password))?;
+    let mut decryptor = DecryptorBuilder::from_bytes(&ciphertext)?.with_policy(
+        &policy,
+        None,
+        PasswordDecryptor::new(password),
+    )?;
     let mut out = Vec::new();
     decryptor.read_to_end(&mut out)?;
     Ok(out)
@@ -397,7 +408,7 @@ impl PasswordDecryptor {
 }
 
 impl VerificationHelper for PasswordDecryptor {
-    fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<Cert>> {
+    fn get_certs(&mut self, _ids: &[openpgp::KeyHandle]) -> openpgp::Result<Vec<openpgp::Cert>> {
         Ok(Vec::new())
     }
 
@@ -407,18 +418,21 @@ impl VerificationHelper for PasswordDecryptor {
 }
 
 impl DecryptionHelper for PasswordDecryptor {
-    fn decrypt(
+    fn decrypt<D>(
         &mut self,
         _pkesks: &[openpgp::packet::PKESK],
         skesks: &[openpgp::packet::SKESK],
         _sym_algo: Option<SymmetricAlgorithm>,
-        mut decrypt: impl FnMut(SymmetricAlgorithm, &SessionKey) -> bool,
-    ) -> openpgp::Result<Option<openpgp::Fingerprint>> {
+        mut decrypt: D,
+    ) -> openpgp::Result<Option<openpgp::Fingerprint>>
+    where
+        D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool,
+    {
         for skesk in skesks {
-            if let Ok((algo, sk)) = skesk.decrypt(&self.password) {
-                if decrypt(algo, &sk) {
-                    return Ok(None);
-                }
+            if let Ok((algo, sk)) = skesk.decrypt(&self.password)
+                && decrypt(algo, &sk)
+            {
+                return Ok(None);
             }
         }
         Err(openpgp::Error::InvalidPassword.into())
