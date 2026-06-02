@@ -36,6 +36,7 @@ enum Commands {
     Init,
     New { problem: u32 },
     Set { problem: u32, solution: String },
+    Update,
     Master,
     ChangeMasterPassword,
     Unlock { problem: u32, solution: String },
@@ -61,6 +62,7 @@ fn run() -> Result<()> {
         Commands::Init => cmd_init(),
         Commands::New { problem } => cmd_new(problem),
         Commands::Set { problem, solution } => cmd_set(problem, &solution),
+        Commands::Update => cmd_update(),
         Commands::Master => cmd_master(),
         Commands::ChangeMasterPassword => cmd_change_master_password(),
         Commands::Unlock { problem, solution } => cmd_unlock(problem, &solution),
@@ -128,18 +130,18 @@ fn cmd_set(problem: u32, solution: &str) -> Result<()> {
         &encrypted_solutions,
     )?;
 
-    let plaintext_path = render_solution_path(&settings.filepath, problem)?;
-    if !plaintext_path.exists() {
-        bail!(
-            "solution file does not exist for problem {}: {}",
-            problem,
-            plaintext_path.display()
-        );
+    lock_solution_file(&settings, problem, solution)?;
+    Ok(())
+}
+
+fn cmd_update() -> Result<()> {
+    let settings = load_settings()?;
+    let content = fs::read_to_string(repo_path(SOLUTIONS_FILE))
+        .context("failed to read solutions.txt; run `eulervault master` first if needed")?;
+    let solutions = parse_solutions(&content)?;
+    for (problem, solution) in solutions {
+        lock_solution_file(&settings, problem, &solution)?;
     }
-    let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
-    let content = fs::read(&plaintext_path)
-        .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
-    encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
     Ok(())
 }
 
@@ -191,6 +193,22 @@ fn cmd_unlock(problem: u32, solution: &str) -> Result<()> {
     }
     fs::write(&plaintext, decrypted)?;
     println!("{}", plaintext.display());
+    Ok(())
+}
+
+fn lock_solution_file(settings: &Settings, problem: u32, solution: &str) -> Result<()> {
+    let plaintext_path = render_solution_path(&settings.filepath, problem)?;
+    if !plaintext_path.exists() {
+        bail!(
+            "solution file does not exist for problem {}: {}",
+            problem,
+            plaintext_path.display()
+        );
+    }
+    let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
+    let content = fs::read(&plaintext_path)
+        .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
+    encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
     Ok(())
 }
 
