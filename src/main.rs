@@ -17,7 +17,7 @@ use openpgp::parse::stream::{
     DecryptionHelper, DecryptorBuilder, MessageStructure, VerificationHelper,
 };
 use openpgp::policy::StandardPolicy;
-use openpgp::serialize::stream::{Armorer, Encryptor2, LiteralWriter, Message};
+use openpgp::serialize::stream::{Armorer, Encryptor, LiteralWriter, Message};
 use openpgp::types::SymmetricAlgorithm;
 
 const SETTINGS_FILE: &str = "eulervault.toml";
@@ -373,7 +373,7 @@ fn encrypt_bytes_to_path(plaintext: &[u8], password: &str, destination: &Path) -
     {
         let message = Message::new(&mut sink);
         let message = Armorer::new(message).build()?;
-        let message = Encryptor2::with_passwords(
+        let message = Encryptor::with_passwords(
             message,
             std::iter::once(OpenPgpPassword::from(password.to_string())),
         )
@@ -427,16 +427,13 @@ impl VerificationHelper for PasswordDecryptor {
 }
 
 impl DecryptionHelper for PasswordDecryptor {
-    fn decrypt<D>(
+    fn decrypt(
         &mut self,
         _pkesks: &[openpgp::packet::PKESK],
         skesks: &[openpgp::packet::SKESK],
         _sym_algo: Option<SymmetricAlgorithm>,
-        mut decrypt: D,
-    ) -> openpgp::Result<Option<openpgp::Fingerprint>>
-    where
-        D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool,
-    {
+        decrypt: &mut dyn FnMut(Option<SymmetricAlgorithm>, &SessionKey) -> bool,
+    ) -> openpgp::Result<Option<openpgp::Cert>> {
         for skesk in skesks {
             if let Ok((algo, sk)) = skesk.decrypt(&self.password)
                 && decrypt(algo, &sk)
