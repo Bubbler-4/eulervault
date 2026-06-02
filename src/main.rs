@@ -256,9 +256,7 @@ fn ensure_gitignore_entries(entries: &[String]) -> Result<()> {
 
 fn prompt_filepath_pattern() -> Result<String> {
     Input::<String>::new()
-        .with_prompt(
-            "solution filepath pattern (%p=problem, %P=4-digit problem, %g=problem group)",
-        )
+        .with_prompt("solution filepath pattern (%p=problem, %P=4-digit problem, %g=problem group)")
         .validate_with(|input: &String| -> std::result::Result<(), String> {
             validate_filepath_pattern(input).map_err(|err| err.to_string())
         })
