@@ -221,7 +221,7 @@ fn render_placeholders(input: &str, problem: u32) -> String {
     let problem_padded = format!("{problem:04}");
     let problem_group_text = problem_group.to_string();
 
-    let mut rendered = String::with_capacity(input.len());
+    let mut rendered = String::with_capacity(input.len().saturating_mul(2));
     let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch != '%' {
