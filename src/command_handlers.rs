@@ -80,9 +80,8 @@ pub(crate) fn cmd_set(problem: u32, solution: &str) -> Result<()> {
 
 pub(crate) fn cmd_update() -> Result<()> {
     let settings = load_settings()?;
-    let content = fs::read_to_string(repo_path(SOLUTIONS_FILE))
-        .context("failed to read solutions.txt; run `eulervault master` first if needed")?;
-    let solutions = parse_solutions(&content)?;
+    let master_password = read_master_password()?;
+    let solutions = load_solutions_map(&master_password)?;
     for (problem, solution) in solutions {
         let plaintext_path = render_solution_path(&settings.filepath, problem)?;
         let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);

@@ -103,10 +103,6 @@ pub(crate) fn load_settings() -> Result<Settings> {
 }
 
 pub(crate) fn load_solutions_bytes(master_password: &str) -> Result<Vec<u8>> {
-    let plaintext = repo_path(SOLUTIONS_FILE);
-    if plaintext.exists() {
-        return fs::read(plaintext).map_err(Into::into);
-    }
     let encrypted = repo_path(encrypted_name(SOLUTIONS_FILE));
     if encrypted.exists() {
         return decrypt_bytes_from_path(&encrypted, master_password);

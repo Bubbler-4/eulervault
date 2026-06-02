@@ -17,9 +17,9 @@ Otherwise, you can grab the latest binaries (Windows/Linux) from [Releases](http
 `eulervault` locks each solution file using the correct answer to the corresponding problem.
 This way, other users who have already solved a problem can unlock and view your solution.
 
-For convenience, a full list of solution keys is stored in `solutions.txt` and encrypted using a "master password", which only the author should have access to.
+For convenience, a full list of solution keys is stored encrypted in `solutions.txt.asc` using a "master password", which only the author should have access to.
 
-Plain solution files and `solutions.txt` are `.gitignore`d so that they do not get committed by accident.
+Plain solution files are `.gitignore`d so that they do not get committed by accident.
 
 ### Settings
 
@@ -46,7 +46,7 @@ Creates a new solution file for the problem number `<problem>`. If `template` is
 
 ### `eulervault set <problem> <solution>`
 
-When you have solved the problem `<problem>`, you can set the answer key for it. `eulervault` updates `solutions.txt`, and creates the locked versions of `solutions.txt` and the solution file for `<problem>`.
+When you have solved the problem `<problem>`, you can set the answer key for it. `eulervault` updates `solutions.txt.asc` and creates the locked version of the solution file for `<problem>`.
 Then you can commit the new (encrypted) files to share your solution.
 
 ### `eulervault update`
@@ -56,7 +56,7 @@ Only the ones where `.asc` file is missing or older are re-encrypted.
 
 ### `eulervault master`
 
-When you want to continue work on a different machine, you can clone your repo and use this command to unlock `solutions.txt` and all solution files at once.
+When you want to continue work on a different machine, you can clone your repo and use this command to unlock all solution files at once.
 
 ### `eulervault unlock <problem>`
 
