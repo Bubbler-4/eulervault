@@ -51,7 +51,7 @@ Then you can commit the new (encrypted) files to share your solution.
 
 ### `eulervault update`
 
-Reads `solutions.txt` and re-locks all solution files listed there. This is useful after editing multiple solution files.
+Reads `solutions.txt` and re-locks listed solution files only when the plaintext file is newer than its `.asc` file (or when the `.asc` file is missing). This is useful after editing multiple solution files.
 
 ### `eulervault master`
 

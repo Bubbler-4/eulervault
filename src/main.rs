@@ -140,7 +140,11 @@ fn cmd_update() -> Result<()> {
         .context("failed to read solutions.txt; run `eulervault master` first if needed")?;
     let solutions = parse_solutions(&content)?;
     for (problem, solution) in solutions {
-        lock_solution_file(&settings, problem, &solution)?;
+        let plaintext_path = render_solution_path(&settings.filepath, problem)?;
+        let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
+        if should_relock_solution_file(&plaintext_path, &encrypted_path)? {
+            lock_solution_file(&settings, problem, &solution)?;
+        }
     }
     Ok(())
 }
@@ -210,6 +214,29 @@ fn lock_solution_file(settings: &Settings, problem: u32, solution: &str) -> Resu
         .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
     encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
     Ok(())
+}
+
+fn should_relock_solution_file(plaintext_path: &Path, encrypted_path: &Path) -> Result<bool> {
+    let plaintext_metadata = fs::metadata(plaintext_path)
+        .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?;
+    if !encrypted_path.exists() {
+        return Ok(true);
+    }
+    let encrypted_metadata = fs::metadata(encrypted_path)
+        .with_context(|| format!("failed to read metadata for {}", encrypted_path.display()))?;
+    let plaintext_modified = plaintext_metadata.modified().with_context(|| {
+        format!(
+            "failed to read modified time for {}",
+            plaintext_path.display()
+        )
+    })?;
+    let encrypted_modified = encrypted_metadata.modified().with_context(|| {
+        format!(
+            "failed to read modified time for {}",
+            encrypted_path.display()
+        )
+    })?;
+    Ok(plaintext_modified > encrypted_modified)
 }
 
 fn load_settings() -> Result<Settings> {
@@ -528,11 +555,53 @@ impl DecryptionHelper for PasswordDecryptor {
 
 #[cfg(test)]
 mod tests {
-    use super::render_placeholders;
+    use std::fs;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use super::{render_placeholders, should_relock_solution_file};
 
     #[test]
     fn render_placeholders_replaces_all_supported_tokens() {
         let rendered = render_placeholders("p=%p,P=%P,g=%g,percent=%%,other=%x,trailing=%", 123);
         assert_eq!(rendered, "p=123,P=0123,g=2,percent=%,other=%x,trailing=%");
+    }
+
+    #[test]
+    fn should_relock_solution_file_uses_modification_times() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!("eulervault-test-{unique}"));
+        fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+
+        let plaintext_path = temp_dir.join("solution.rs");
+        let encrypted_path = temp_dir.join("solution.rs.asc");
+
+        fs::write(&plaintext_path, "plain").expect("failed to write plaintext file");
+        assert!(
+            should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "missing encrypted file should trigger relock"
+        );
+
+        fs::write(&encrypted_path, "cipher").expect("failed to write encrypted file");
+        std::thread::sleep(Duration::from_secs(1));
+        fs::write(&plaintext_path, "plain2").expect("failed to update plaintext file");
+        assert!(
+            should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "newer plaintext should trigger relock"
+        );
+
+        std::thread::sleep(Duration::from_secs(1));
+        fs::write(&encrypted_path, "cipher2").expect("failed to update encrypted file");
+        assert!(
+            !should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "newer encrypted file should skip relock"
+        );
+
+        fs::remove_dir_all(temp_dir).expect("failed to clean up temp dir");
     }
 }

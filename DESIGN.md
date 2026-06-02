@@ -50,7 +50,7 @@ Sets the solution for the given problem number. This will update `solutions.txt`
 
 ## `eulervault update`
 
-Reads `solutions.txt` and re-encrypts all matching solution files.
+Reads `solutions.txt` and re-encrypts matching solution files only when the plaintext file is newer than the encrypted `.asc` file (or if the `.asc` file does not exist).
 
 ## `eulervault master`
 
