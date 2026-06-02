@@ -155,7 +155,6 @@ fn cmd_master() -> Result<()> {
 
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     let decrypted = decrypt_bytes_from_path(&encrypted_solutions, &password)?;
-    fs::write(repo_path(SOLUTIONS_FILE), &decrypted)?;
     let solutions = parse_solutions(&String::from_utf8(decrypted)?)?;
 
     for (problem, solution) in solutions {
