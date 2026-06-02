@@ -224,9 +224,13 @@ fn render_placeholders(input: &str, problem: u32) -> String {
 }
 
 fn load_template_content(template_path: &str, problem: u32) -> Result<Vec<u8>> {
-    let template_path = resolve_path(template_path);
-    let template = fs::read_to_string(&template_path)
-        .with_context(|| format!("failed to read template file {}", template_path.display()))?;
+    let resolved_path = resolve_path(template_path);
+    let template = fs::read_to_string(&resolved_path).with_context(|| {
+        format!(
+            "failed to read template file {template_path} (resolved to {})",
+            resolved_path.display()
+        )
+    })?;
     Ok(render_placeholders(&template, problem).into_bytes())
 }
 
@@ -248,9 +252,7 @@ fn resolve_path(path: &str) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        env::current_dir()
-            .expect("failed to read current directory")
-            .join(path)
+        repo_path(path.to_string_lossy().as_ref())
     }
 }
 
