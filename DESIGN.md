@@ -21,6 +21,8 @@ This is useful e.g. when the user moves to a different machine.
 
   One of `%p` and `%P` must be present. `%g` is optional.
 
+* `template`: an optional path to a template file. If set, `eulervault new` initializes new solution files with this template's content after replacing `%p`, `%P`, and `%g`.
+
 ## Solutions file `solutions.txt`
 
 This file contains solutions to all problems, with each line in the form of `problem=solution`. For example, if the solution to problem 1 is 123456789, the line will be `1=123456789`.
@@ -40,6 +42,7 @@ This command also adds `solutions.txt` and the glob pattern matching the solutio
 ## `eulervault new <problem>`
 
 Creates a new solution file for the given problem number and prints the path to the file.
+If the global `template` setting is set, the new file is initialized from the template file content with `%p`, `%P`, and `%g` placeholders replaced for the given problem.
 
 ## `eulervault set <problem> <solution>`
 

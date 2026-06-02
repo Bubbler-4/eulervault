@@ -44,6 +44,7 @@ enum Commands {
 #[derive(Debug, Serialize, Deserialize)]
 struct Settings {
     filepath: String,
+    template: Option<String>,
 }
 
 fn main() {
@@ -74,7 +75,10 @@ fn cmd_init() -> Result<()> {
     let filepath = prompt_filepath_pattern()?;
     let master_password = prompt_new_password("master password")?;
 
-    let settings = Settings { filepath };
+    let settings = Settings {
+        filepath,
+        template: None,
+    };
     let settings_toml = toml::to_string_pretty(&settings)?;
     fs::write(repo_path(SETTINGS_FILE), settings_toml)?;
 
@@ -100,7 +104,12 @@ fn cmd_new(problem: u32) -> Result<()> {
     if path.exists() {
         bail!("solution file already exists: {}", path.display());
     }
-    fs::write(&path, [])?;
+    let content = if let Some(template_path) = settings.template.as_deref() {
+        load_template_content(template_path, problem)?
+    } else {
+        Vec::new()
+    };
+    fs::write(&path, content)?;
     println!("{}", path.display());
     Ok(())
 }
@@ -202,12 +211,23 @@ fn validate_filepath_pattern(pattern: &str) -> Result<()> {
 
 fn render_solution_path(pattern: &str, problem: u32) -> Result<PathBuf> {
     validate_filepath_pattern(pattern)?;
+    let rendered = render_placeholders(pattern, problem);
+    Ok(repo_path(&rendered))
+}
+
+fn render_placeholders(input: &str, problem: u32) -> String {
     let problem_group = (problem - 1) / 100 + 1;
-    let rendered = pattern
+    input
         .replace("%P", &format!("{problem:04}"))
         .replace("%p", &problem.to_string())
-        .replace("%g", &problem_group.to_string());
-    Ok(repo_path(&rendered))
+        .replace("%g", &problem_group.to_string())
+}
+
+fn load_template_content(template_path: &str, problem: u32) -> Result<Vec<u8>> {
+    let template_path = resolve_path(template_path);
+    let template = fs::read_to_string(&template_path)
+        .with_context(|| format!("failed to read template file {}", template_path.display()))?;
+    Ok(render_placeholders(&template, problem).into_bytes())
 }
 
 fn filepath_pattern_to_glob(pattern: &str) -> String {
@@ -221,6 +241,17 @@ fn repo_path(relative: &str) -> PathBuf {
     env::current_dir()
         .expect("failed to read current directory")
         .join(relative)
+}
+
+fn resolve_path(path: &str) -> PathBuf {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()
+            .expect("failed to read current directory")
+            .join(path)
+    }
 }
 
 fn encrypted_name(name: &str) -> String {
