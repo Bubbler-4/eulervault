@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct Settings {
     pub(crate) filepath: String,
     pub(crate) template: Option<String>,
+    pub(crate) test: Option<String>,
 }
 
 pub(crate) fn parse_solutions(content: &str) -> Result<BTreeMap<u32, String>> {

@@ -24,6 +24,7 @@ pub(crate) fn cmd_init() -> Result<()> {
     let settings = crate::misc::Settings {
         filepath,
         template: None,
+        test: None,
     };
     let settings_toml = toml::to_string_pretty(&settings)?;
     fs::write(repo_path(crate::SETTINGS_FILE), settings_toml)?;
@@ -139,6 +140,27 @@ pub(crate) fn cmd_unlock(problem: u32, solution: &str) -> Result<()> {
     }
     fs::write(&plaintext, decrypted)?;
     println!("{}", plaintext.display());
+    Ok(())
+}
+
+pub(crate) fn cmd_test(problem: u32) -> Result<()> {
+    let settings = load_settings()?;
+    let test_command = settings
+        .test
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("`test` is not configured in eulervault.toml"))?;
+    let rendered = crate::template::render_placeholders(test_command, problem);
+    let status = std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
+        .args(if cfg!(windows) {
+            ["/C", &rendered]
+        } else {
+            ["-c", &rendered]
+        })
+        .status()
+        .with_context(|| format!("failed to run test command: {rendered}"))?;
+    if !status.success() {
+        anyhow::bail!("test command exited with {}", status);
+    }
     Ok(())
 }
 
