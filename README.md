@@ -52,6 +52,7 @@ Then you can commit the new (encrypted) files to share your solution.
 ### `eulervault update`
 
 When you have updated one or more solution files after encrypting them, `eulervault update` updates the corresponding encrypted files.
+Only the ones where `.asc` file is missing or older are re-encrypted.
 
 ### `eulervault master`
 
