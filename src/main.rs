@@ -28,6 +28,7 @@ enum Commands {
     Master,
     ChangeMasterPassword,
     Unlock { problem: u32, solution: String },
+    Test { problem: u32 },
 }
 
 fn main() {
@@ -48,6 +49,7 @@ fn run() -> Result<()> {
         Commands::Master => command_handlers::cmd_master(),
         Commands::ChangeMasterPassword => command_handlers::cmd_change_master_password(),
         Commands::Unlock { problem, solution } => command_handlers::cmd_unlock(problem, &solution),
+        Commands::Test { problem } => command_handlers::cmd_test(problem),
     }
 }
 

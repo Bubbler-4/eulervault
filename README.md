@@ -26,6 +26,7 @@ Plain solution files are `.gitignore`d so that they do not get committed by acci
 ```toml
 filepath = "path/to/solution"
 template = "path/to/template/file"
+test = "command to run %p"
 ```
 
 `filepath` is the path template for each solution file. The problem number can be inserted via `%p` (simple) or `%P` (padded with zeros to 4 digits),
@@ -33,6 +34,9 @@ and the grid number (groups of 100 problems) via `%g`. Either `%p` or `%P` shoul
 
 `template` is an optional path to the template file. If present, its content will be copied to new solution files on `eulervault new`.
 The template file can use the same placeholders `%p`, `%P`, and `%g`, and you can use `%%` to insert a literal `%`.
+
+`test` is an optional shell command template to run when `eulervault test <problem>` is invoked.
+It supports the same placeholders `%p`, `%P`, `%g`, and `%%` as the other settings.
 
 ## Usage
 
@@ -58,6 +62,11 @@ Only the ones where `.asc` file is missing or older are re-encrypted.
 
 When you want to continue work on a different machine, you can clone your repo and use this command to unlock all solution files at once.
 
-### `eulervault unlock <problem>`
+### `eulervault unlock <problem> <solution>`
 
 Non-authors can use this command to unlock the solution file for `<problem>`.
+
+### `eulervault test <problem>`
+
+Runs the shell command defined in the `test` setting for the given problem number after substituting template placeholders.
+Exits with an error if `test` is not configured or the command exits with a non-zero status.
