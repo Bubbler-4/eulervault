@@ -557,9 +557,31 @@ impl DecryptionHelper for PasswordDecryptor {
 mod tests {
     use std::fs;
     use std::fs::OpenOptions;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{render_placeholders, should_relock_solution_file};
+
+    struct TempDirGuard {
+        path: PathBuf,
+    }
+
+    impl TempDirGuard {
+        fn new(path: PathBuf) -> Self {
+            fs::create_dir_all(&path).expect("failed to create temp dir");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     fn set_modified_time(path: &std::path::Path, time: SystemTime) {
         let file = OpenOptions::new()
@@ -582,11 +604,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system clock before epoch")
             .as_nanos();
-        let temp_dir = std::env::temp_dir().join(format!("eulervault-test-{unique}"));
-        fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+        let temp_dir =
+            TempDirGuard::new(std::env::temp_dir().join(format!("eulervault-test-{unique}")));
 
-        let plaintext_path = temp_dir.join("solution.rs");
-        let encrypted_path = temp_dir.join("solution.rs.asc");
+        let plaintext_path = temp_dir.path().join("solution.rs");
+        let encrypted_path = temp_dir.path().join("solution.rs.asc");
 
         fs::write(&plaintext_path, "plain").expect("failed to write plaintext file");
         assert!(
@@ -611,7 +633,5 @@ mod tests {
                 .expect("failed to evaluate relock condition"),
             "newer encrypted file should skip relock"
         );
-
-        fs::remove_dir_all(temp_dir).expect("failed to clean up temp dir");
     }
 }
