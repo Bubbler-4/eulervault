@@ -217,10 +217,45 @@ fn render_solution_path(pattern: &str, problem: u32) -> Result<PathBuf> {
 
 fn render_placeholders(input: &str, problem: u32) -> String {
     let problem_group = (problem - 1) / 100 + 1;
-    input
-        .replace("%P", &format!("{problem:04}"))
-        .replace("%p", &problem.to_string())
-        .replace("%g", &problem_group.to_string())
+    let problem_text = problem.to_string();
+    let problem_padded = format!("{problem:04}");
+    let problem_group_text = problem_group.to_string();
+
+    let mut rendered = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '%' {
+            rendered.push(ch);
+            continue;
+        }
+
+        match chars.peek().copied() {
+            Some('%') => {
+                chars.next();
+                rendered.push('%');
+            }
+            Some('p') => {
+                chars.next();
+                rendered.push_str(&problem_text);
+            }
+            Some('P') => {
+                chars.next();
+                rendered.push_str(&problem_padded);
+            }
+            Some('g') => {
+                chars.next();
+                rendered.push_str(&problem_group_text);
+            }
+            Some(other) => {
+                chars.next();
+                rendered.push('%');
+                rendered.push(other);
+            }
+            None => rendered.push('%'),
+        }
+    }
+
+    rendered
 }
 
 fn load_template_content(template_path: &str, problem: u32) -> Result<Vec<u8>> {
@@ -479,7 +514,7 @@ mod tests {
 
     #[test]
     fn render_placeholders_replaces_all_supported_tokens() {
-        let rendered = render_placeholders("p=%p,P=%P,g=%g", 123);
-        assert_eq!(rendered, "p=123,P=0123,g=2");
+        let rendered = render_placeholders("p=%p,P=%P,g=%g,percent=%%,other=%x,trailing=%", 123);
+        assert_eq!(rendered, "p=123,P=0123,g=2,percent=%,other=%x,trailing=%");
     }
 }

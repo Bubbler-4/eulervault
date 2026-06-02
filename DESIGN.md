@@ -21,7 +21,7 @@ This is useful e.g. when the user moves to a different machine.
 
   One of `%p` and `%P` must be present. `%g` is optional.
 
-* `template`: an optional path to a template file. If set, `eulervault new` initializes new solution files with this template's content after replacing `%p`, `%P`, and `%g`.
+* `template`: an optional path to a template file. If set, `eulervault new` initializes new solution files with this template's content after replacing `%p`, `%P`, and `%g`. Use `%%` to insert a literal `%`.
 
 ## Solutions file `solutions.txt`
 
