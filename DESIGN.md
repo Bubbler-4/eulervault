@@ -48,6 +48,10 @@ If the global `template` setting is set, the new file is initialized from the te
 
 Sets the solution for the given problem number. This will update `solutions.txt`, and encrypt the solution file and `solutions.txt`.
 
+## `eulervault update`
+
+Reads `solutions.txt` and re-encrypts matching solution files only when the plaintext file is newer than the encrypted `.asc` file (or if the `.asc` file does not exist).
+
 ## `eulervault master`
 
 For when the user moves to a different machine. Prompts the user for the master password, and if it successfully decrypts `solutions.txt`, decrypts all solution files and creates the master password file in the new machine.

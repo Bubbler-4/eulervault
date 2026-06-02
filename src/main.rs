@@ -36,6 +36,7 @@ enum Commands {
     Init,
     New { problem: u32 },
     Set { problem: u32, solution: String },
+    Update,
     Master,
     ChangeMasterPassword,
     Unlock { problem: u32, solution: String },
@@ -61,6 +62,7 @@ fn run() -> Result<()> {
         Commands::Init => cmd_init(),
         Commands::New { problem } => cmd_new(problem),
         Commands::Set { problem, solution } => cmd_set(problem, &solution),
+        Commands::Update => cmd_update(),
         Commands::Master => cmd_master(),
         Commands::ChangeMasterPassword => cmd_change_master_password(),
         Commands::Unlock { problem, solution } => cmd_unlock(problem, &solution),
@@ -128,18 +130,22 @@ fn cmd_set(problem: u32, solution: &str) -> Result<()> {
         &encrypted_solutions,
     )?;
 
-    let plaintext_path = render_solution_path(&settings.filepath, problem)?;
-    if !plaintext_path.exists() {
-        bail!(
-            "solution file does not exist for problem {}: {}",
-            problem,
-            plaintext_path.display()
-        );
+    lock_solution_file(&settings, problem, solution)?;
+    Ok(())
+}
+
+fn cmd_update() -> Result<()> {
+    let settings = load_settings()?;
+    let content = fs::read_to_string(repo_path(SOLUTIONS_FILE))
+        .context("failed to read solutions.txt; run `eulervault master` first if needed")?;
+    let solutions = parse_solutions(&content)?;
+    for (problem, solution) in solutions {
+        let plaintext_path = render_solution_path(&settings.filepath, problem)?;
+        let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
+        if should_relock_solution_file(&plaintext_path, &encrypted_path)? {
+            lock_solution_file(&settings, problem, &solution)?;
+        }
     }
-    let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
-    let content = fs::read(&plaintext_path)
-        .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
-    encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
     Ok(())
 }
 
@@ -192,6 +198,45 @@ fn cmd_unlock(problem: u32, solution: &str) -> Result<()> {
     fs::write(&plaintext, decrypted)?;
     println!("{}", plaintext.display());
     Ok(())
+}
+
+fn lock_solution_file(settings: &Settings, problem: u32, solution: &str) -> Result<()> {
+    let plaintext_path = render_solution_path(&settings.filepath, problem)?;
+    if !plaintext_path.exists() {
+        bail!(
+            "solution file does not exist for problem {}: {}",
+            problem,
+            plaintext_path.display()
+        );
+    }
+    let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
+    let content = fs::read(&plaintext_path)
+        .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
+    encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
+    Ok(())
+}
+
+fn should_relock_solution_file(plaintext_path: &Path, encrypted_path: &Path) -> Result<bool> {
+    let plaintext_metadata = fs::metadata(plaintext_path)
+        .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?;
+    if !encrypted_path.exists() {
+        return Ok(true);
+    }
+    let encrypted_metadata = fs::metadata(encrypted_path)
+        .with_context(|| format!("failed to read metadata for {}", encrypted_path.display()))?;
+    let plaintext_modified = plaintext_metadata.modified().with_context(|| {
+        format!(
+            "failed to read modified time for {}",
+            plaintext_path.display()
+        )
+    })?;
+    let encrypted_modified = encrypted_metadata.modified().with_context(|| {
+        format!(
+            "failed to read modified time for {}",
+            encrypted_path.display()
+        )
+    })?;
+    Ok(plaintext_modified > encrypted_modified)
 }
 
 fn load_settings() -> Result<Settings> {
@@ -510,11 +555,83 @@ impl DecryptionHelper for PasswordDecryptor {
 
 #[cfg(test)]
 mod tests {
-    use super::render_placeholders;
+    use std::fs;
+    use std::fs::OpenOptions;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use super::{render_placeholders, should_relock_solution_file};
+
+    struct TempDirGuard {
+        path: PathBuf,
+    }
+
+    impl TempDirGuard {
+        fn new(path: PathBuf) -> Self {
+            fs::create_dir_all(&path).expect("failed to create temp dir");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn set_modified_time(path: &std::path::Path, time: SystemTime) {
+        let file = OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("failed to open file for timestamp update");
+        file.set_times(fs::FileTimes::new().set_modified(time))
+            .expect("failed to set file timestamp");
+    }
 
     #[test]
     fn render_placeholders_replaces_all_supported_tokens() {
         let rendered = render_placeholders("p=%p,P=%P,g=%g,percent=%%,other=%x,trailing=%", 123);
         assert_eq!(rendered, "p=123,P=0123,g=2,percent=%,other=%x,trailing=%");
+    }
+
+    #[test]
+    fn should_relock_solution_file_uses_modification_times() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir =
+            TempDirGuard::new(std::env::temp_dir().join(format!("eulervault-test-{unique}")));
+
+        let plaintext_path = temp_dir.path().join("solution.rs");
+        let encrypted_path = temp_dir.path().join("solution.rs.asc");
+
+        fs::write(&plaintext_path, "plain").expect("failed to write plaintext file");
+        assert!(
+            should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "missing encrypted file should trigger relock"
+        );
+
+        fs::write(&encrypted_path, "cipher").expect("failed to write encrypted file");
+        let base_time = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        set_modified_time(&encrypted_path, base_time + Duration::from_secs(1));
+        set_modified_time(&plaintext_path, base_time + Duration::from_secs(2));
+        assert!(
+            should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "newer plaintext should trigger relock"
+        );
+
+        set_modified_time(&encrypted_path, base_time + Duration::from_secs(3));
+        assert!(
+            !should_relock_solution_file(&plaintext_path, &encrypted_path)
+                .expect("failed to evaluate relock condition"),
+            "newer encrypted file should skip relock"
+        );
     }
 }

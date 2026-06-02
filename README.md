@@ -49,6 +49,11 @@ Creates a new solution file for the problem number `<problem>`. If `template` is
 When you have solved the problem `<problem>`, you can set the answer key for it. `eulervault` updates `solutions.txt`, and creates the locked versions of `solutions.txt` and the solution file for `<problem>`.
 Then you can commit the new (encrypted) files to share your solution.
 
+### `eulervault update`
+
+When you have updated one or more solution files after encrypting them, `eulervault update` updates the corresponding encrypted files.
+Only the ones where `.asc` file is missing or older are re-encrypted.
+
 ### `eulervault master`
 
 When you want to continue work on a different machine, you can clone your repo and use this command to unlock `solutions.txt` and all solution files at once.
