@@ -14,7 +14,11 @@ use openpgp::policy::StandardPolicy;
 use openpgp::serialize::stream::{Armorer, Encryptor, LiteralWriter, Message};
 use openpgp::types::SymmetricAlgorithm;
 
-pub(crate) fn encrypt_bytes_to_path(plaintext: &[u8], password: &str, destination: &Path) -> Result<()> {
+pub(crate) fn encrypt_bytes_to_path(
+    plaintext: &[u8],
+    password: &str,
+    destination: &Path,
+) -> Result<()> {
     let mut sink = Vec::<u8>::new();
     {
         let message = Message::new(&mut sink);

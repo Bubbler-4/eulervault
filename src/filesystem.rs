@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use directories::ProjectDirs;
 
+use crate::SOLUTIONS_FILE;
 use crate::crypto::decrypt_bytes_from_path;
 use crate::misc::{Settings, parse_solutions};
 use crate::template::validate_filepath_pattern;
-use crate::SOLUTIONS_FILE;
 
 pub(crate) fn repo_path(relative: impl AsRef<Path>) -> PathBuf {
     env::current_dir()
@@ -122,7 +122,10 @@ pub(crate) fn load_solutions_map(master_password: &str) -> Result<BTreeMap<u32, 
     parse_solutions(&String::from_utf8(bytes)?)
 }
 
-pub(crate) fn should_relock_solution_file(plaintext_path: &Path, encrypted_path: &Path) -> Result<bool> {
+pub(crate) fn should_relock_solution_file(
+    plaintext_path: &Path,
+    encrypted_path: &Path,
+) -> Result<bool> {
     let plaintext_metadata = fs::metadata(plaintext_path)
         .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?;
     if !encrypted_path.exists() {

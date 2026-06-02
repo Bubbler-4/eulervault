@@ -143,7 +143,11 @@ pub(crate) fn cmd_unlock(problem: u32, solution: &str) -> Result<()> {
     Ok(())
 }
 
-fn lock_solution_file(settings: &crate::misc::Settings, problem: u32, solution: &str) -> Result<()> {
+fn lock_solution_file(
+    settings: &crate::misc::Settings,
+    problem: u32,
+    solution: &str,
+) -> Result<()> {
     let plaintext_path = render_solution_path(&settings.filepath, problem)?;
     if !plaintext_path.exists() {
         bail!(
