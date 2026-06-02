@@ -87,7 +87,7 @@ fn cmd_init() -> Result<()> {
     let gitignore_pattern = filepath_pattern_to_glob(&settings.filepath);
     ensure_gitignore_entries(&[SOLUTIONS_FILE.to_string(), gitignore_pattern])?;
 
-    let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
+    let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     if !encrypted_solutions.exists() {
         encrypt_bytes_to_path(&[], &master_password, &encrypted_solutions)?;
     }
@@ -121,7 +121,7 @@ fn cmd_set(problem: u32, solution: &str) -> Result<()> {
     let mut solutions = load_solutions_map(&master_password)?;
     solutions.insert(problem, solution.to_string());
     let solutions_content = serialize_solutions(&solutions);
-    let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
+    let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(
         solutions_content.as_bytes(),
         &master_password,
@@ -147,7 +147,7 @@ fn cmd_master() -> Result<()> {
     let settings = load_settings()?;
     let password = prompt_password("master password")?;
 
-    let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
+    let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     let decrypted = decrypt_bytes_from_path(&encrypted_solutions, &password)?;
     fs::write(repo_path(SOLUTIONS_FILE), &decrypted)?;
     let solutions = parse_solutions(&String::from_utf8(decrypted)?)?;
@@ -175,7 +175,7 @@ fn cmd_change_master_password() -> Result<()> {
     let new_password = prompt_new_password("new master password")?;
 
     let solutions_bytes = load_solutions_bytes(&old_password)?;
-    let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
+    let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(&solutions_bytes, &new_password, &encrypted_solutions)?;
     write_master_password(&new_password)?;
     Ok(())
@@ -227,7 +227,7 @@ fn load_template_content(template_path: &str, problem: u32) -> Result<Vec<u8>> {
     let resolved_path = resolve_path(template_path);
     let template = fs::read_to_string(&resolved_path).with_context(|| {
         format!(
-            "failed to read template file {template_path} (resolved to {})",
+            "failed to read template file configured as {template_path} (resolved to {}); ensure the file exists and is readable",
             resolved_path.display()
         )
     })?;
@@ -241,7 +241,7 @@ fn filepath_pattern_to_glob(pattern: &str) -> String {
         .replace("%g", "*")
 }
 
-fn repo_path(relative: &str) -> PathBuf {
+fn repo_path(relative: impl AsRef<Path>) -> PathBuf {
     env::current_dir()
         .expect("failed to read current directory")
         .join(relative)
@@ -252,7 +252,7 @@ fn resolve_path(path: &str) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        repo_path(path.to_string_lossy().as_ref())
+        repo_path(path)
     }
 }
 
@@ -355,7 +355,7 @@ fn load_solutions_bytes(master_password: &str) -> Result<Vec<u8>> {
     if plaintext.exists() {
         return fs::read(plaintext).map_err(Into::into);
     }
-    let encrypted = repo_path(&encrypted_name(SOLUTIONS_FILE));
+    let encrypted = repo_path(encrypted_name(SOLUTIONS_FILE));
     if encrypted.exists() {
         return decrypt_bytes_from_path(&encrypted, master_password);
     }
@@ -470,5 +470,16 @@ impl DecryptionHelper for PasswordDecryptor {
             }
         }
         Err(openpgp::Error::InvalidPassword.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_placeholders;
+
+    #[test]
+    fn render_placeholders_replaces_all_supported_tokens() {
+        let rendered = render_placeholders("p=%p,P=%P,g=%g", 123);
+        assert_eq!(rendered, "p=123,P=0123,g=2");
     }
 }
