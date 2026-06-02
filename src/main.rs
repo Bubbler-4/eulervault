@@ -556,9 +556,19 @@ impl DecryptionHelper for PasswordDecryptor {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::fs::OpenOptions;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{render_placeholders, should_relock_solution_file};
+
+    fn set_modified_time(path: &std::path::Path, time: SystemTime) {
+        let file = OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("failed to open file for timestamp update");
+        file.set_times(fs::FileTimes::new().set_modified(time))
+            .expect("failed to set file timestamp");
+    }
 
     #[test]
     fn render_placeholders_replaces_all_supported_tokens() {
@@ -586,16 +596,16 @@ mod tests {
         );
 
         fs::write(&encrypted_path, "cipher").expect("failed to write encrypted file");
-        std::thread::sleep(Duration::from_secs(1));
-        fs::write(&plaintext_path, "plain2").expect("failed to update plaintext file");
+        let base_time = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        set_modified_time(&encrypted_path, base_time + Duration::from_secs(1));
+        set_modified_time(&plaintext_path, base_time + Duration::from_secs(2));
         assert!(
             should_relock_solution_file(&plaintext_path, &encrypted_path)
                 .expect("failed to evaluate relock condition"),
             "newer plaintext should trigger relock"
         );
 
-        std::thread::sleep(Duration::from_secs(1));
-        fs::write(&encrypted_path, "cipher2").expect("failed to update encrypted file");
+        set_modified_time(&encrypted_path, base_time + Duration::from_secs(3));
         assert!(
             !should_relock_solution_file(&plaintext_path, &encrypted_path)
                 .expect("failed to evaluate relock condition"),
