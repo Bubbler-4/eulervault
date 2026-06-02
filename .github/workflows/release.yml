@@ -1,4 +1,4 @@
-name: Release
+name: Build and Release Binaries
 
 on:
   push:
@@ -16,10 +16,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            asset_suffix: linux-x86_64
+            asset_name: eulervault-linux-x86_64
             binary_name: eulervault
           - target: x86_64-pc-windows-gnu
-            asset_suffix: windows-x86_64-gnu
+            asset_name: eulervault-windows-x86_64-gnu.exe
             binary_name: eulervault.exe
 
     steps:
@@ -41,7 +41,7 @@ jobs:
       - name: Package binary asset
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/eulervault-${{ matrix.asset_suffix }}${{ matrix.target == 'x86_64-pc-windows-gnu' && '.exe' || '' }}
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/${{ matrix.asset_name }}
 
       - name: Upload binary to release
         uses: softprops/action-gh-release@v2
