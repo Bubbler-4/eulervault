@@ -1,16 +1,17 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
+use dialoguer::{Input, Password as PasswordInput};
 use directories::ProjectDirs;
 use sequoia_openpgp as openpgp;
 use serde::{Deserialize, Serialize};
 
-use openpgp::crypto::{Password, SessionKey};
+use openpgp::crypto::{Password as OpenPgpPassword, SessionKey};
 use openpgp::parse::Parse;
 use openpgp::parse::stream::{
     DecryptionHelper, DecryptorBuilder, MessageStructure, VerificationHelper,
@@ -66,12 +67,8 @@ fn run() -> Result<()> {
 }
 
 fn cmd_init() -> Result<()> {
-    let filepath = prompt("solution filepath pattern: ")?;
-    validate_filepath_pattern(&filepath)?;
-    let master_password = prompt("master password: ")?;
-    if master_password.is_empty() {
-        bail!("master password must not be empty");
-    }
+    let filepath = prompt_filepath_pattern()?;
+    let master_password = prompt_new_password("master password")?;
 
     let settings = Settings { filepath };
     let settings_toml = toml::to_string_pretty(&settings)?;
@@ -131,16 +128,12 @@ fn cmd_set(problem: u32, solution: &str) -> Result<()> {
     let content = fs::read(&plaintext_path)
         .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
     encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
-    remove_if_exists(&plaintext_path)?;
     Ok(())
 }
 
 fn cmd_master() -> Result<()> {
     let settings = load_settings()?;
-    let password = prompt("master password: ")?;
-    if password.is_empty() {
-        bail!("master password must not be empty");
-    }
+    let password = prompt_password("master password")?;
 
     let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
     let decrypted = decrypt_bytes_from_path(&encrypted_solutions, &password)?;
@@ -167,10 +160,7 @@ fn cmd_master() -> Result<()> {
 
 fn cmd_change_master_password() -> Result<()> {
     let old_password = read_master_password()?;
-    let new_password = prompt("new master password: ")?;
-    if new_password.is_empty() {
-        bail!("new master password must not be empty");
-    }
+    let new_password = prompt_new_password("new master password")?;
 
     let solutions_bytes = load_solutions_bytes(&old_password)?;
     let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
@@ -262,12 +252,31 @@ fn ensure_gitignore_entries(entries: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn prompt(label: &str) -> Result<String> {
-    print!("{label}");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    Ok(input.trim().to_string())
+fn prompt_filepath_pattern() -> Result<String> {
+    Input::<String>::new()
+        .with_prompt("solution filepath pattern")
+        .validate_with(|input: &String| -> std::result::Result<(), String> {
+            validate_filepath_pattern(input).map_err(|err| err.to_string())
+        })
+        .interact_text()
+        .map_err(Into::into)
+}
+
+fn prompt_password(prompt: &str) -> Result<String> {
+    PasswordInput::new()
+        .with_prompt(prompt)
+        .allow_empty_password(false)
+        .interact()
+        .map_err(Into::into)
+}
+
+fn prompt_new_password(prompt: &str) -> Result<String> {
+    PasswordInput::new()
+        .with_prompt(prompt)
+        .with_confirmation("confirm password", "passwords mismatch")
+        .allow_empty_password(false)
+        .interact()
+        .map_err(Into::into)
 }
 
 fn master_password_path() -> Result<PathBuf> {
@@ -366,7 +375,7 @@ fn encrypt_bytes_to_path(plaintext: &[u8], password: &str, destination: &Path) -
         let message = Armorer::new(message).build()?;
         let message = Encryptor2::with_passwords(
             message,
-            std::iter::once(Password::from(password.to_string())),
+            std::iter::once(OpenPgpPassword::from(password.to_string())),
         )
         .symmetric_algo(SymmetricAlgorithm::AES256)
         .build()?;
@@ -396,13 +405,13 @@ fn decrypt_bytes_from_path(source: &Path, password: &str) -> Result<Vec<u8>> {
 }
 
 struct PasswordDecryptor {
-    password: Password,
+    password: OpenPgpPassword,
 }
 
 impl PasswordDecryptor {
     fn new(password: &str) -> Self {
         Self {
-            password: Password::from(password.to_string()),
+            password: OpenPgpPassword::from(password.to_string()),
         }
     }
 }
