@@ -67,6 +67,10 @@ fn run() -> Result<()> {
 }
 
 fn cmd_init() -> Result<()> {
+    if repo_path(SETTINGS_FILE).exists() {
+        bail!("Remove eulervault.toml to restart the init process");
+    }
+
     let filepath = prompt_filepath_pattern()?;
     let master_password = prompt_new_password("master password")?;
 
@@ -114,7 +118,6 @@ fn cmd_set(problem: u32, solution: &str) -> Result<()> {
         &master_password,
         &encrypted_solutions,
     )?;
-    remove_if_exists(&repo_path(SOLUTIONS_FILE))?;
 
     let plaintext_path = render_solution_path(&settings.filepath, problem)?;
     if !plaintext_path.exists() {
@@ -165,7 +168,6 @@ fn cmd_change_master_password() -> Result<()> {
     let solutions_bytes = load_solutions_bytes(&old_password)?;
     let encrypted_solutions = repo_path(&encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(&solutions_bytes, &new_password, &encrypted_solutions)?;
-    remove_if_exists(&repo_path(SOLUTIONS_FILE))?;
     write_master_password(&new_password)?;
     Ok(())
 }
@@ -254,7 +256,7 @@ fn ensure_gitignore_entries(entries: &[String]) -> Result<()> {
 
 fn prompt_filepath_pattern() -> Result<String> {
     Input::<String>::new()
-        .with_prompt("solution filepath pattern")
+        .with_prompt("solution filepath pattern (%p=problem, %P=4-digit problem, %g=problem group)")
         .validate_with(|input: &String| -> std::result::Result<(), String> {
             validate_filepath_pattern(input).map_err(|err| err.to_string())
         })
@@ -359,13 +361,6 @@ fn serialize_solutions(map: &BTreeMap<u32, String>) -> String {
         out.push_str(&format!("{problem}={solution}\n"));
     }
     out
-}
-
-fn remove_if_exists(path: &Path) -> Result<()> {
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    Ok(())
 }
 
 fn encrypt_bytes_to_path(plaintext: &[u8], password: &str, destination: &Path) -> Result<()> {
