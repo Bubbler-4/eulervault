@@ -80,6 +80,20 @@ pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
         }
     }
 
+    // Preflight check: verify all solution files can be locked before committing
+    for problem in &updates {
+        let plaintext_path = render_solution_path(&settings.filepath, *problem)?;
+        if !plaintext_path.exists() {
+            bail!(
+                "solution file does not exist for problem {}: {}",
+                problem,
+                plaintext_path.display()
+            );
+        }
+        fs::read(&plaintext_path)
+            .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
+    }
+
     let solutions_content = serialize_solutions(&solutions);
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(
