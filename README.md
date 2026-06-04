@@ -53,6 +53,14 @@ Creates a new solution file for the problem number `<problem>`. If `template` is
 When you have solved the problem `<problem>`, you can set the answer key for it. `eulervault` updates `solutions.txt.asc` and creates the locked version of the solution file for `<problem>`.
 Then you can commit the new (encrypted) files to share your solution.
 
+You can also update multiple keys in one command:
+
+```bash
+eulervault --set problem1=solution1 --set problem2=solution2
+```
+
+If the same problem appears multiple times in one invocation, only the first appearance is used.
+
 ### `eulervault update`
 
 When you have updated one or more solution files after encrypting them, `eulervault update` updates the corresponding encrypted files.

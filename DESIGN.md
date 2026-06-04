@@ -48,6 +48,9 @@ If the global `template` setting is set, the new file is initialized from the te
 
 Sets the solution for the given problem number. This will update `solutions.txt`, and encrypt the solution file and `solutions.txt`.
 
+`--set` can also be repeated on the top-level command line to apply multiple updates in one run (for example, `eulervault --set 1=233168 --set 2=4613732`).
+When the same problem appears multiple times in the same invocation, only the first appearance is applied.
+
 ## `eulervault update`
 
 Reads `solutions.txt` and re-encrypts matching solution files only when the plaintext file is newer than the encrypted `.asc` file (or if the `.asc` file does not exist).

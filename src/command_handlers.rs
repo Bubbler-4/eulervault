@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 
 use anyhow::{Context, Result, bail};
@@ -62,11 +63,23 @@ pub(crate) fn cmd_new(problem: u32) -> Result<()> {
 }
 
 pub(crate) fn cmd_set(problem: u32, solution: &str) -> Result<()> {
+    cmd_set_many(&[(problem, solution.to_string())])
+}
+
+pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
     let settings = load_settings()?;
     let master_password = read_master_password()?;
 
     let mut solutions = load_solutions_map(&master_password)?;
-    solutions.insert(problem, solution.to_string());
+    let mut seen_problems = BTreeSet::new();
+    let mut updates = Vec::new();
+    for (problem, solution) in problem_solutions {
+        if seen_problems.insert(*problem) {
+            solutions.insert(*problem, solution.clone());
+            updates.push((*problem, solution.clone()));
+        }
+    }
+
     let solutions_content = serialize_solutions(&solutions);
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(
@@ -75,7 +88,9 @@ pub(crate) fn cmd_set(problem: u32, solution: &str) -> Result<()> {
         &encrypted_solutions,
     )?;
 
-    lock_solution_file(&settings, problem, solution)?;
+    for (problem, solution) in updates {
+        lock_solution_file(&settings, problem, &solution)?;
+    }
     Ok(())
 }
 
