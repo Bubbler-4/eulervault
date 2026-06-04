@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 
 use anyhow::{Context, Result, bail};
@@ -62,11 +63,37 @@ pub(crate) fn cmd_new(problem: u32) -> Result<()> {
 }
 
 pub(crate) fn cmd_set(problem: u32, solution: &str) -> Result<()> {
+    cmd_set_many(&[(problem, solution.to_string())])
+}
+
+pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
     let settings = load_settings()?;
     let master_password = read_master_password()?;
 
     let mut solutions = load_solutions_map(&master_password)?;
-    solutions.insert(problem, solution.to_string());
+    let mut seen_problems = BTreeSet::new();
+    let mut updates = Vec::new();
+    for (problem, solution) in problem_solutions {
+        if seen_problems.insert(*problem) {
+            solutions.insert(*problem, solution.clone());
+            updates.push(*problem);
+        }
+    }
+
+    // Preflight check: verify all solution files can be locked before committing
+    for problem in &updates {
+        let plaintext_path = render_solution_path(&settings.filepath, *problem)?;
+        if !plaintext_path.exists() {
+            bail!(
+                "solution file does not exist for problem {}: {}",
+                problem,
+                plaintext_path.display()
+            );
+        }
+        fs::read(&plaintext_path)
+            .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
+    }
+
     let solutions_content = serialize_solutions(&solutions);
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     encrypt_bytes_to_path(
@@ -75,7 +102,12 @@ pub(crate) fn cmd_set(problem: u32, solution: &str) -> Result<()> {
         &encrypted_solutions,
     )?;
 
-    lock_solution_file(&settings, problem, solution)?;
+    for problem in updates {
+        let solution = solutions
+            .get(&problem)
+            .expect("updated problem must exist in solutions map");
+        lock_solution_file(&settings, problem, solution)?;
+    }
     Ok(())
 }
 

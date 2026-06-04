@@ -1,5 +1,5 @@
-use anyhow::Result;
-use clap::{Parser, Subcommand};
+use anyhow::{Result, anyhow};
+use clap::{ArgAction, Parser, Subcommand};
 
 mod command_handlers;
 mod crypto;
@@ -15,8 +15,11 @@ pub(crate) const SOLUTIONS_FILE: &str = "solutions.txt";
 #[command(name = "eulervault")]
 #[command(about = "Encrypt and share Project Euler solutions")]
 struct Cli {
+    #[arg(long, value_parser = parse_set_pair, action = ArgAction::Append)]
+    set: Vec<(u32, String)>,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -41,7 +44,18 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
+    if !cli.set.is_empty() {
+        if cli.command.is_some() {
+            return Err(anyhow!(
+                "`--set` cannot be used together with subcommands; use either `--set` inputs or a subcommand"
+            ));
+        }
+        return command_handlers::cmd_set_many(&cli.set);
+    }
+
+    match cli.command.ok_or_else(|| {
+        anyhow!("no command provided; use a subcommand or one or more `--set` options")
+    })? {
         Commands::Init => command_handlers::cmd_init(),
         Commands::New { problem } => command_handlers::cmd_new(problem),
         Commands::Set { problem, solution } => command_handlers::cmd_set(problem, &solution),
@@ -51,6 +65,30 @@ fn run() -> Result<()> {
         Commands::Unlock { problem, solution } => command_handlers::cmd_unlock(problem, &solution),
         Commands::Test { problem } => command_handlers::cmd_test(problem),
     }
+}
+
+fn parse_set_pair(value: &str) -> Result<(u32, String), String> {
+    if value.matches('=').count() != 1 {
+        return Err(format!("invalid --set value `{value}`: expected problem=solution"));
+    }
+    let (problem_raw, solution) = value
+        .split_once('=')
+        .ok_or_else(|| format!("invalid --set value `{value}`: expected problem=solution"))?;
+    if solution.is_empty() {
+        return Err(format!(
+            "invalid --set value `{value}`: solution cannot be empty"
+        ));
+    }
+
+    let problem = problem_raw.parse::<u32>().map_err(|_| {
+        format!("invalid --set value `{value}`: problem must be a positive integer")
+    })?;
+    if problem == 0 {
+        return Err(format!(
+            "invalid --set value `{value}`: problem must be a positive integer"
+        ));
+    }
+    Ok((problem, solution.to_string()))
 }
 
 #[cfg(test)]
@@ -134,5 +172,21 @@ mod tests {
                 .expect("failed to evaluate relock condition"),
             "newer encrypted file should skip relock"
         );
+    }
+
+    #[test]
+    fn parse_set_pair_accepts_problem_solution() {
+        assert_eq!(
+            super::parse_set_pair("123=42").expect("failed to parse set pair"),
+            (123, "42".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_set_pair_rejects_invalid_inputs() {
+        assert!(super::parse_set_pair("123").is_err());
+        assert!(super::parse_set_pair("0=42").is_err());
+        assert!(super::parse_set_pair("abc=42").is_err());
+        assert!(super::parse_set_pair("1=").is_err());
     }
 }
