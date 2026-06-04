@@ -76,7 +76,7 @@ pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
     for (problem, solution) in problem_solutions {
         if seen_problems.insert(*problem) {
             solutions.insert(*problem, solution.clone());
-            updates.push((*problem, solution.clone()));
+            updates.push(*problem);
         }
     }
 
@@ -88,8 +88,11 @@ pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
         &encrypted_solutions,
     )?;
 
-    for (problem, solution) in updates {
-        lock_solution_file(&settings, problem, &solution)?;
+    for problem in updates {
+        let solution = solutions
+            .get(&problem)
+            .expect("updated problem must exist in solutions map");
+        lock_solution_file(&settings, problem, solution)?;
     }
     Ok(())
 }

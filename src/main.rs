@@ -15,7 +15,7 @@ pub(crate) const SOLUTIONS_FILE: &str = "solutions.txt";
 #[command(name = "eulervault")]
 #[command(about = "Encrypt and share Project Euler solutions")]
 struct Cli {
-    #[arg(long = "set", value_parser = parse_set_pair, action = ArgAction::Append)]
+    #[arg(long, value_parser = parse_set_pair, action = ArgAction::Append)]
     set: Vec<(u32, String)>,
 
     #[command(subcommand)]
@@ -53,10 +53,9 @@ fn run() -> Result<()> {
         return command_handlers::cmd_set_many(&cli.set);
     }
 
-    match cli
-        .command
-        .ok_or_else(|| anyhow!("no command provided; use a subcommand or one or more `--set` options"))?
-    {
+    match cli.command.ok_or_else(|| {
+        anyhow!("no command provided; use a subcommand or one or more `--set` options")
+    })? {
         Commands::Init => command_handlers::cmd_init(),
         Commands::New { problem } => command_handlers::cmd_new(problem),
         Commands::Set { problem, solution } => command_handlers::cmd_set(problem, &solution),
@@ -78,9 +77,9 @@ fn parse_set_pair(value: &str) -> Result<(u32, String), String> {
         ));
     }
 
-    let problem = problem_raw
-        .parse::<u32>()
-        .map_err(|_| format!("invalid --set value `{value}`: problem must be a positive integer"))?;
+    let problem = problem_raw.parse::<u32>().map_err(|_| {
+        format!("invalid --set value `{value}`: problem must be a positive integer")
+    })?;
     if problem == 0 {
         return Err(format!(
             "invalid --set value `{value}`: problem must be a positive integer"
