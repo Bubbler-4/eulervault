@@ -264,28 +264,9 @@ fn ensure_encrypted_file_is_newer(
 mod tests {
     use std::env;
     use std::fs;
-    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::lock_solution_file;
-
-    struct CurrentDirGuard {
-        original: PathBuf,
-    }
-
-    impl CurrentDirGuard {
-        fn new(path: PathBuf) -> Self {
-            let original = env::current_dir().expect("failed to read current directory");
-            env::set_current_dir(&path).expect("failed to switch current directory");
-            Self { original }
-        }
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            let _ = env::set_current_dir(&self.original);
-        }
-    }
 
     #[test]
     fn lock_solution_file_sets_encrypted_mtime_newer_than_plaintext() {
@@ -295,10 +276,11 @@ mod tests {
             .as_nanos();
         let temp_dir = env::temp_dir().join(format!("eulervault-lock-mtime-{unique}"));
         fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
-        let _dir_guard = CurrentDirGuard::new(temp_dir.clone());
 
+        // Use absolute path instead of changing cwd
+        let absolute_pattern = temp_dir.join("solutions/%p.txt");
         let settings = crate::misc::Settings {
-            filepath: "solutions/%p.txt".to_string(),
+            filepath: absolute_pattern.to_string_lossy().to_string(),
             template: None,
             test: None,
         };
