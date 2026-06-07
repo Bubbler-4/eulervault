@@ -69,7 +69,9 @@ fn run() -> Result<()> {
 
 fn parse_set_pair(value: &str) -> Result<(u32, String), String> {
     if value.matches('=').count() != 1 {
-        return Err(format!("invalid --set value `{value}`: expected problem=solution"));
+        return Err(format!(
+            "invalid --set value `{value}`: expected problem=solution"
+        ));
     }
     let (problem_raw, solution) = value
         .split_once('=')
