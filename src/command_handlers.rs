@@ -113,10 +113,19 @@ pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn cmd_update() -> Result<()> {
+pub(crate) fn cmd_update(problem: Option<u32>) -> Result<()> {
     let settings = load_settings()?;
     let master_password = read_master_password()?;
     let solutions = load_solutions_map(&master_password)?;
+
+    if let Some(problem) = problem {
+        let solution = solutions
+            .get(&problem)
+            .ok_or_else(|| anyhow::anyhow!("solution key is not set for problem {problem}"))?;
+        lock_solution_file(&settings, problem, solution)?;
+        return Ok(());
+    }
+
     for (problem, solution) in solutions {
         let plaintext_path = render_solution_path(&settings.filepath, problem)?;
         let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
