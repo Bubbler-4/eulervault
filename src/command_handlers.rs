@@ -297,8 +297,9 @@ mod tests {
         fs::create_dir_all(plaintext.parent().expect("missing parent"))
             .expect("failed to create parent directory");
         fs::write(&plaintext, b"content").expect("failed to write plaintext");
+        let password = format!("password-{unique}");
 
-        lock_solution_file(&settings, 1, "password").expect("failed to lock solution file");
+        lock_solution_file(&settings, 1, &password).expect("failed to lock solution file");
 
         let encrypted = temp_dir.join("solutions/1.txt.asc");
         let plaintext_modified = fs::metadata(&plaintext)
