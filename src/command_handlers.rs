@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::fs::OpenOptions;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
 
@@ -213,5 +215,91 @@ fn lock_solution_file(
     let content = fs::read(&plaintext_path)
         .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
     encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
+    ensure_encrypted_file_is_newer(&plaintext_path, &encrypted_path)?;
     Ok(())
+}
+
+fn ensure_encrypted_file_is_newer(plaintext_path: &std::path::Path, encrypted_path: &std::path::Path) -> Result<()> {
+    let plaintext_modified = fs::metadata(plaintext_path)
+        .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?
+        .modified()
+        .with_context(|| format!("failed to read modified time for {}", plaintext_path.display()))?;
+    let candidate = plaintext_modified
+        .checked_add(Duration::from_secs(1))
+        .unwrap_or_else(SystemTime::now);
+    let target_modified = SystemTime::now().max(candidate);
+    let encrypted_file = OpenOptions::new()
+        .write(true)
+        .open(encrypted_path)
+        .with_context(|| format!("failed to open {}", encrypted_path.display()))?;
+    encrypted_file
+        .set_times(fs::FileTimes::new().set_modified(target_modified))
+        .with_context(|| format!("failed to set modified time for {}", encrypted_path.display()))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::lock_solution_file;
+
+    struct CurrentDirGuard {
+        original: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn new(path: PathBuf) -> Self {
+            let original = env::current_dir().expect("failed to read current directory");
+            env::set_current_dir(&path).expect("failed to switch current directory");
+            Self { original }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = env::set_current_dir(&self.original);
+        }
+    }
+
+    #[test]
+    fn lock_solution_file_sets_encrypted_mtime_newer_than_plaintext() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!("eulervault-lock-mtime-{unique}"));
+        fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+        let _dir_guard = CurrentDirGuard::new(temp_dir.clone());
+
+        let settings = crate::misc::Settings {
+            filepath: "solutions/%p.txt".to_string(),
+            template: None,
+            test: None,
+        };
+        let plaintext = temp_dir.join("solutions/1.txt");
+        fs::create_dir_all(plaintext.parent().expect("missing parent"))
+            .expect("failed to create parent directory");
+        fs::write(&plaintext, b"content").expect("failed to write plaintext");
+
+        lock_solution_file(&settings, 1, "password").expect("failed to lock solution file");
+
+        let encrypted = temp_dir.join("solutions/1.txt.asc");
+        let plaintext_modified = fs::metadata(&plaintext)
+            .expect("failed to read plaintext metadata")
+            .modified()
+            .expect("failed to read plaintext modified time");
+        let encrypted_modified = fs::metadata(&encrypted)
+            .expect("failed to read encrypted metadata")
+            .modified()
+            .expect("failed to read encrypted modified time");
+        assert!(
+            encrypted_modified > plaintext_modified,
+            "encrypted file should be newer than plaintext"
+        );
+
+        fs::remove_dir_all(&temp_dir).expect("failed to clean temp dir");
+    }
 }
