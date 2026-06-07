@@ -219,11 +219,19 @@ fn lock_solution_file(
     Ok(())
 }
 
-fn ensure_encrypted_file_is_newer(plaintext_path: &std::path::Path, encrypted_path: &std::path::Path) -> Result<()> {
+fn ensure_encrypted_file_is_newer(
+    plaintext_path: &std::path::Path,
+    encrypted_path: &std::path::Path,
+) -> Result<()> {
     let plaintext_modified = fs::metadata(plaintext_path)
         .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?
         .modified()
-        .with_context(|| format!("failed to read modified time for {}", plaintext_path.display()))?;
+        .with_context(|| {
+            format!(
+                "failed to read modified time for {}",
+                plaintext_path.display()
+            )
+        })?;
     let candidate = plaintext_modified
         .checked_add(Duration::from_secs(1))
         .unwrap_or_else(SystemTime::now);
@@ -234,13 +242,19 @@ fn ensure_encrypted_file_is_newer(plaintext_path: &std::path::Path, encrypted_pa
         .with_context(|| format!("failed to open {}", encrypted_path.display()))?;
     encrypted_file
         .set_times(fs::FileTimes::new().set_modified(target_modified))
-        .with_context(|| format!("failed to set modified time for {}", encrypted_path.display()))?;
+        .with_context(|| {
+            format!(
+                "failed to set modified time for {}",
+                encrypted_path.display()
+            )
+        })?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::env;
+    use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -299,7 +313,5 @@ mod tests {
             encrypted_modified > plaintext_modified,
             "encrypted file should be newer than plaintext"
         );
-
-        fs::remove_dir_all(&temp_dir).expect("failed to clean temp dir");
     }
 }
