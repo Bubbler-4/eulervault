@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::fs::OpenOptions;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
 
@@ -111,10 +113,19 @@ pub(crate) fn cmd_set_many(problem_solutions: &[(u32, String)]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn cmd_update() -> Result<()> {
+pub(crate) fn cmd_update(problem: Option<u32>) -> Result<()> {
     let settings = load_settings()?;
     let master_password = read_master_password()?;
     let solutions = load_solutions_map(&master_password)?;
+
+    if let Some(problem) = problem {
+        let solution = solutions
+            .get(&problem)
+            .ok_or_else(|| anyhow::anyhow!("solution key is not set for problem {problem}"))?;
+        lock_solution_file(&settings, problem, solution)?;
+        return Ok(());
+    }
+
     for (problem, solution) in solutions {
         let plaintext_path = render_solution_path(&settings.filepath, problem)?;
         let encrypted_path = encrypted_path_for_plaintext(&plaintext_path);
@@ -213,5 +224,86 @@ fn lock_solution_file(
     let content = fs::read(&plaintext_path)
         .with_context(|| format!("failed to read {}", plaintext_path.display()))?;
     encrypt_bytes_to_path(&content, solution, &encrypted_path)?;
+    ensure_encrypted_file_is_newer(&plaintext_path, &encrypted_path)?;
     Ok(())
+}
+
+fn ensure_encrypted_file_is_newer(
+    plaintext_path: &std::path::Path,
+    encrypted_path: &std::path::Path,
+) -> Result<()> {
+    let plaintext_modified = fs::metadata(plaintext_path)
+        .with_context(|| format!("failed to read metadata for {}", plaintext_path.display()))?
+        .modified()
+        .with_context(|| {
+            format!(
+                "failed to read modified time for {}",
+                plaintext_path.display()
+            )
+        })?;
+    let candidate = plaintext_modified
+        .checked_add(Duration::from_secs(1))
+        .unwrap_or_else(SystemTime::now);
+    let target_modified = SystemTime::now().max(candidate);
+    let encrypted_file = OpenOptions::new()
+        .write(true)
+        .open(encrypted_path)
+        .with_context(|| format!("failed to open {}", encrypted_path.display()))?;
+    encrypted_file
+        .set_times(fs::FileTimes::new().set_modified(target_modified))
+        .with_context(|| {
+            format!(
+                "failed to set modified time for {}",
+                encrypted_path.display()
+            )
+        })?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::lock_solution_file;
+
+    #[test]
+    fn lock_solution_file_sets_encrypted_mtime_newer_than_plaintext() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!("eulervault-lock-mtime-{unique}"));
+        fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+
+        // Use absolute path instead of changing cwd
+        let absolute_pattern = temp_dir.join("solutions/%p.txt");
+        let settings = crate::misc::Settings {
+            filepath: absolute_pattern.to_string_lossy().to_string(),
+            template: None,
+            test: None,
+        };
+        let plaintext = temp_dir.join("solutions/1.txt");
+        fs::create_dir_all(plaintext.parent().expect("missing parent"))
+            .expect("failed to create parent directory");
+        fs::write(&plaintext, b"content").expect("failed to write plaintext");
+        let password = format!("password-{unique}");
+
+        lock_solution_file(&settings, 1, &password).expect("failed to lock solution file");
+
+        let encrypted = temp_dir.join("solutions/1.txt.asc");
+        let plaintext_modified = fs::metadata(&plaintext)
+            .expect("failed to read plaintext metadata")
+            .modified()
+            .expect("failed to read plaintext modified time");
+        let encrypted_modified = fs::metadata(&encrypted)
+            .expect("failed to read encrypted metadata")
+            .modified()
+            .expect("failed to read encrypted modified time");
+        assert!(
+            encrypted_modified > plaintext_modified,
+            "encrypted file should be newer than plaintext"
+        );
+    }
 }

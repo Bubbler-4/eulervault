@@ -61,10 +61,12 @@ eulervault --set problem1=solution1 --set problem2=solution2
 
 If the same problem appears multiple times in one invocation, only the first appearance is used.
 
-### `eulervault update`
+### `eulervault update [problem]`
 
 When you have updated one or more solution files after encrypting them, `eulervault update` updates the corresponding encrypted files.
 Only the ones where `.asc` file is missing or older are re-encrypted.
+
+If `[problem]` is provided, `eulervault update [problem]` force re-encrypts that specific solution file without checking timestamps.
 
 ### `eulervault master`
 

@@ -27,7 +27,7 @@ enum Commands {
     Init,
     New { problem: u32 },
     Set { problem: u32, solution: String },
-    Update,
+    Update { problem: Option<u32> },
     Master,
     ChangeMasterPassword,
     Unlock { problem: u32, solution: String },
@@ -59,7 +59,7 @@ fn run() -> Result<()> {
         Commands::Init => command_handlers::cmd_init(),
         Commands::New { problem } => command_handlers::cmd_new(problem),
         Commands::Set { problem, solution } => command_handlers::cmd_set(problem, &solution),
-        Commands::Update => command_handlers::cmd_update(),
+        Commands::Update { problem } => command_handlers::cmd_update(problem),
         Commands::Master => command_handlers::cmd_master(),
         Commands::ChangeMasterPassword => command_handlers::cmd_change_master_password(),
         Commands::Unlock { problem, solution } => command_handlers::cmd_unlock(problem, &solution),
@@ -69,7 +69,9 @@ fn run() -> Result<()> {
 
 fn parse_set_pair(value: &str) -> Result<(u32, String), String> {
     if value.matches('=').count() != 1 {
-        return Err(format!("invalid --set value `{value}`: expected problem=solution"));
+        return Err(format!(
+            "invalid --set value `{value}`: expected problem=solution"
+        ));
     }
     let (problem_raw, solution) = value
         .split_once('=')
@@ -97,6 +99,8 @@ mod tests {
     use std::fs::OpenOptions;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use clap::Parser;
 
     use crate::filesystem::should_relock_solution_file;
     use crate::template::render_placeholders;
@@ -188,5 +192,22 @@ mod tests {
         assert!(super::parse_set_pair("0=42").is_err());
         assert!(super::parse_set_pair("abc=42").is_err());
         assert!(super::parse_set_pair("1=").is_err());
+    }
+
+    #[test]
+    fn update_command_accepts_optional_problem_argument() {
+        let cli = super::Cli::try_parse_from(["eulervault", "update"])
+            .expect("failed to parse update command");
+        match cli.command {
+            Some(super::Commands::Update { problem: None }) => {}
+            _ => panic!("expected update command without problem"),
+        }
+
+        let cli = super::Cli::try_parse_from(["eulervault", "update", "123"])
+            .expect("failed to parse update command with problem");
+        match cli.command {
+            Some(super::Commands::Update { problem: Some(123) }) => {}
+            _ => panic!("expected update command with problem"),
+        }
     }
 }
