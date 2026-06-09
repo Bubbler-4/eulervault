@@ -211,15 +211,15 @@ mod tests {
             Some(super::Commands::Update { problem: Some(123) }) => {}
             _ => panic!("expected update command with problem"),
         }
+    }
 
-        #[test]
-        fn migrate_command_parses_without_arguments() {
-            let cli = super::Cli::try_parse_from(["eulervault", "migrate"])
-                .expect("failed to parse migrate command");
-            match cli.command {
-                Some(super::Commands::Migrate) => {}
-                _ => panic!("expected migrate command"),
-            }
+    #[test]
+    fn migrate_command_parses_without_arguments() {
+        let cli = super::Cli::try_parse_from(["eulervault", "migrate"])
+            .expect("failed to parse migrate command");
+        match cli.command {
+            Some(super::Commands::Migrate) => {}
+            _ => panic!("expected migrate command"),
         }
     }
 }

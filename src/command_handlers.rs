@@ -286,7 +286,10 @@ fn ensure_encrypted_file_is_newer(
     Ok(())
 }
 
-fn collect_migration_moves(old_filepath: &str, new_filepath: &str) -> Result<Vec<(PathBuf, PathBuf)>> {
+fn collect_migration_moves(
+    old_filepath: &str,
+    new_filepath: &str,
+) -> Result<Vec<(PathBuf, PathBuf)>> {
     let mut planned_moves = Vec::new();
     for problem in 1..=9999 {
         let old_plaintext = render_solution_path(old_filepath, problem)?;
@@ -420,19 +423,26 @@ mod tests {
         assert_eq!(moves.len(), 2, "expected plaintext and encrypted moves");
         let new_plaintext = temp_dir.join("new/0001.rs");
         let new_encrypted = temp_dir.join("new/0001.rs.asc");
-        assert!(moves.iter().any(|(from, to)| {
-            from == &old_plaintext && to == &new_plaintext
-        }));
-        assert!(moves.iter().any(|(from, to)| {
-            from == &old_encrypted && to == &new_encrypted
-        }));
+        assert!(
+            moves
+                .iter()
+                .any(|(from, to)| { from == &old_plaintext && to == &new_plaintext })
+        );
+        assert!(
+            moves
+                .iter()
+                .any(|(from, to)| { from == &old_encrypted && to == &new_encrypted })
+        );
 
         let no_moves = collect_migration_moves(
             &unchanged_pattern.to_string_lossy(),
             &unchanged_pattern.to_string_lossy(),
         )
         .expect("failed to collect unchanged migration moves");
-        assert!(no_moves.is_empty(), "unchanged pattern should produce no moves");
+        assert!(
+            no_moves.is_empty(),
+            "unchanged pattern should produce no moves"
+        );
     }
 
     #[test]
@@ -443,18 +453,13 @@ mod tests {
             .as_nanos();
         let temp_dir = env::temp_dir().join(format!("eulervault-migrate-conflict-{unique}"));
         let moves = vec![
-            (
-                temp_dir.join("old-a"),
-                temp_dir.join("new-b"),
-            ),
-            (
-                temp_dir.join("new-b"),
-                temp_dir.join("new-c"),
-            ),
+            (temp_dir.join("old-a"), temp_dir.join("new-b")),
+            (temp_dir.join("new-b"), temp_dir.join("new-c")),
         ];
         let err = validate_migration_moves(&moves).expect_err("expected conflict error");
         assert!(
-            err.to_string().contains("conflicts with existing source path"),
+            err.to_string()
+                .contains("conflicts with existing source path"),
             "unexpected error: {err:#}"
         );
     }
