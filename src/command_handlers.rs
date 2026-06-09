@@ -1,6 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::OpenOptions;
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
@@ -173,6 +174,77 @@ pub(crate) fn cmd_change_master_password() -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn cmd_migrate() -> Result<()> {
+    let mut settings = load_settings()?;
+    let old_filepath = settings.filepath.clone();
+    let new_filepath = prompt_filepath_pattern()?;
+
+    let planned_moves = collect_migration_moves(&old_filepath, &new_filepath)?;
+    let mut completed_moves = Vec::new();
+
+    for (from, to) in &planned_moves {
+        if let Some(parent) = to.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e.into());
+        }
+        if let Err(e) = fs::rename(from, to)
+            .with_context(|| format!("failed to move {} -> {}", from.display(), to.display()))
+        {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e);
+        }
+        completed_moves.push((from.clone(), to.clone()));
+    }
+
+    settings.filepath = new_filepath;
+    let settings_toml = match toml::to_string_pretty(&settings) {
+        Ok(toml) => toml,
+        Err(e) => {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e.into());
+        }
+    };
+
+    if let Err(e) = fs::write(repo_path(crate::SETTINGS_FILE), settings_toml) {
+        // Rollback: reverse all completed moves
+        for (orig_from, orig_to) in completed_moves.iter().rev() {
+            let _ = fs::rename(orig_to, orig_from);
+        }
+        return Err(e.into());
+    }
+
+    let gitignore_pattern = filepath_pattern_to_glob(&settings.filepath);
+    if let Err(e) = ensure_gitignore_entries(&[gitignore_pattern]) {
+        // Rollback: reverse all completed moves
+        for (orig_from, orig_to) in completed_moves.iter().rev() {
+            let _ = fs::rename(orig_to, orig_from);
+        }
+        let restore_settings = crate::misc::Settings {
+            filepath: old_filepath,
+            template: settings.template,
+            test: settings.test,
+        };
+        if let Ok(settings_toml) = toml::to_string_pretty(&restore_settings) {
+            let _ = fs::write(repo_path(crate::SETTINGS_FILE), settings_toml);
+        }
+        return Err(e);
+    }
+
+    println!("migrated {} files", planned_moves.len());
+    Ok(())
+}
+
 pub(crate) fn cmd_unlock(problem: u32, solution: &str) -> Result<()> {
     let settings = load_settings()?;
     let plaintext = render_solution_path(&settings.filepath, problem)?;
@@ -260,13 +332,75 @@ fn ensure_encrypted_file_is_newer(
     Ok(())
 }
 
+fn collect_migration_moves(
+    old_filepath: &str,
+    new_filepath: &str,
+) -> Result<Vec<(PathBuf, PathBuf)>> {
+    let mut planned_moves = Vec::new();
+    for problem in 1..=9999 {
+        let old_plaintext = render_solution_path(old_filepath, problem)?;
+        let new_plaintext = render_solution_path(new_filepath, problem)?;
+        let old_encrypted = encrypted_path_for_plaintext(&old_plaintext);
+        let new_encrypted = encrypted_path_for_plaintext(&new_plaintext);
+        for (old_path, new_path) in [
+            (old_plaintext.clone(), new_plaintext.clone()),
+            (old_encrypted, new_encrypted),
+        ] {
+            if old_path == new_path || !old_path.exists() {
+                continue;
+            }
+            planned_moves.push((old_path, new_path));
+        }
+    }
+
+    validate_migration_moves(&planned_moves)?;
+    Ok(planned_moves)
+}
+
+fn validate_migration_moves(moves: &[(PathBuf, PathBuf)]) -> Result<()> {
+    let old_paths = moves
+        .iter()
+        .map(|(old_path, _)| old_path.clone())
+        .collect::<BTreeSet<_>>();
+    let mut new_to_old = BTreeMap::<PathBuf, PathBuf>::new();
+
+    for (old_path, new_path) in moves {
+        if old_paths.contains(new_path) {
+            bail!(
+                "cannot migrate: destination path {} conflicts with existing source path {}",
+                new_path.display(),
+                old_path.display()
+            );
+        }
+        if let Some(conflicting_old) = new_to_old.get(new_path) {
+            if conflicting_old != old_path {
+                bail!(
+                    "cannot migrate: destination path {} is targeted by both {} and {}",
+                    new_path.display(),
+                    conflicting_old.display(),
+                    old_path.display()
+                );
+            }
+        } else {
+            new_to_old.insert(new_path.clone(), old_path.clone());
+        }
+        if new_path.exists() && !old_paths.contains(new_path) {
+            bail!(
+                "cannot migrate: destination path already exists: {}",
+                new_path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::lock_solution_file;
+    use super::{collect_migration_moves, lock_solution_file, validate_migration_moves};
 
     #[test]
     fn lock_solution_file_sets_encrypted_mtime_newer_than_plaintext() {
@@ -304,6 +438,75 @@ mod tests {
         assert!(
             encrypted_modified > plaintext_modified,
             "encrypted file should be newer than plaintext"
+        );
+    }
+
+    #[test]
+    fn collect_migration_moves_ignores_unchanged_and_missing_paths() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!("eulervault-migrate-plan-{unique}"));
+        fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+
+        let old_pattern = temp_dir.join("old/%P.rs");
+        let new_pattern = temp_dir.join("new/%P.rs");
+        let unchanged_pattern = temp_dir.join("same/%P.rs");
+
+        let old_plaintext = temp_dir.join("old/0001.rs");
+        let old_encrypted = temp_dir.join("old/0001.rs.asc");
+        fs::create_dir_all(old_plaintext.parent().expect("missing parent"))
+            .expect("failed to create old parent dir");
+        fs::write(&old_plaintext, "plain").expect("failed to write plaintext");
+        fs::write(&old_encrypted, "cipher").expect("failed to write encrypted");
+
+        let moves = collect_migration_moves(
+            &old_pattern.to_string_lossy(),
+            &new_pattern.to_string_lossy(),
+        )
+        .expect("failed to collect migration moves");
+        assert_eq!(moves.len(), 2, "expected plaintext and encrypted moves");
+        let new_plaintext = temp_dir.join("new/0001.rs");
+        let new_encrypted = temp_dir.join("new/0001.rs.asc");
+        assert!(
+            moves
+                .iter()
+                .any(|(from, to)| { from == &old_plaintext && to == &new_plaintext })
+        );
+        assert!(
+            moves
+                .iter()
+                .any(|(from, to)| { from == &old_encrypted && to == &new_encrypted })
+        );
+
+        let no_moves = collect_migration_moves(
+            &unchanged_pattern.to_string_lossy(),
+            &unchanged_pattern.to_string_lossy(),
+        )
+        .expect("failed to collect unchanged migration moves");
+        assert!(
+            no_moves.is_empty(),
+            "unchanged pattern should produce no moves"
+        );
+    }
+
+    #[test]
+    fn validate_migration_moves_rejects_source_destination_conflicts() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!("eulervault-migrate-conflict-{unique}"));
+        let moves = vec![
+            (temp_dir.join("old-a"), temp_dir.join("new-b")),
+            (temp_dir.join("new-b"), temp_dir.join("new-c")),
+        ];
+        let err = validate_migration_moves(&moves).expect_err("expected conflict error");
+        assert!(
+            err.to_string()
+                .contains("conflicts with existing source path"),
+            "unexpected error: {err:#}"
         );
     }
 }
