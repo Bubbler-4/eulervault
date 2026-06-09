@@ -319,7 +319,7 @@ fn validate_migration_moves(moves: &[(PathBuf, PathBuf)]) -> Result<()> {
     let mut new_to_old = BTreeMap::<PathBuf, PathBuf>::new();
 
     for (old_path, new_path) in moves {
-        if new_path != old_path && old_paths.contains(new_path) {
+        if old_paths.contains(new_path) {
             bail!(
                 "cannot migrate: destination path {} conflicts with existing source path {}",
                 new_path.display(),
@@ -338,7 +338,7 @@ fn validate_migration_moves(moves: &[(PathBuf, PathBuf)]) -> Result<()> {
         } else {
             new_to_old.insert(new_path.clone(), old_path.clone());
         }
-        if new_path.exists() && new_path != old_path && !old_paths.contains(new_path) {
+        if new_path.exists() && !old_paths.contains(new_path) {
             bail!(
                 "cannot migrate: destination path already exists: {}",
                 new_path.display()
