@@ -48,6 +48,13 @@ Sets up the current folder for `eulervault`. You will be asked to set `filepath`
 
 Creates a new solution file for the problem number `<problem>`. If `template` is set, the file is populated with the template.
 
+### `eulervault migrate`
+
+Prompts for a new `filepath` pattern, then migrates plaintext and encrypted solution files from the old pattern to the new one.
+It checks all problem numbers from 1 through 9999 and does not read `solutions.txt.asc`.
+If a rendered path is unchanged, that file is skipped.
+If any destination path conflicts with a different source path, the command fails and does not migrate anything.
+
 ### `eulervault set <problem> <solution>`
 
 When you have solved the problem `<problem>`, you can set the answer key for it. `eulervault` updates `solutions.txt.asc` and creates the locked version of the solution file for `<problem>`.

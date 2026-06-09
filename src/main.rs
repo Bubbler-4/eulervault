@@ -25,6 +25,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Init,
+    Migrate,
     New { problem: u32 },
     Set { problem: u32, solution: String },
     Update { problem: Option<u32> },
@@ -57,6 +58,7 @@ fn run() -> Result<()> {
         anyhow!("no command provided; use a subcommand or one or more `--set` options")
     })? {
         Commands::Init => command_handlers::cmd_init(),
+        Commands::Migrate => command_handlers::cmd_migrate(),
         Commands::New { problem } => command_handlers::cmd_new(problem),
         Commands::Set { problem, solution } => command_handlers::cmd_set(problem, &solution),
         Commands::Update { problem } => command_handlers::cmd_update(problem),
@@ -208,6 +210,16 @@ mod tests {
         match cli.command {
             Some(super::Commands::Update { problem: Some(123) }) => {}
             _ => panic!("expected update command with problem"),
+        }
+
+        #[test]
+        fn migrate_command_parses_without_arguments() {
+            let cli = super::Cli::try_parse_from(["eulervault", "migrate"])
+                .expect("failed to parse migrate command");
+            match cli.command {
+                Some(super::Commands::Migrate) => {}
+                _ => panic!("expected migrate command"),
+            }
         }
     }
 }

@@ -44,6 +44,13 @@ This command also adds `solutions.txt` and the glob pattern matching the solutio
 Creates a new solution file for the given problem number and prints the path to the file.
 If the global `template` setting is set, the new file is initialized from the template file content with `%p`, `%P`, and `%g` placeholders replaced for the given problem.
 
+## `eulervault migrate`
+
+Prompts for a new `filepath` pattern, then checks problems 1 through 9999 and moves existing plaintext solution files and corresponding `.asc` files from the old rendered paths to the new rendered paths.
+This command does not consult `solutions.txt`.
+Files whose rendered old and new paths are identical are skipped.
+If any destination path collides with a different file's source path, the command aborts before moving anything.
+
 ## `eulervault set <problem> <solution>`
 
 Sets the solution for the given problem number. This will update `solutions.txt`, and encrypt the solution file and `solutions.txt`.
