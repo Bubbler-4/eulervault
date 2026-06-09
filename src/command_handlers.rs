@@ -183,8 +183,14 @@ pub(crate) fn cmd_migrate() -> Result<()> {
     let mut completed_moves = Vec::new();
 
     for (from, to) in &planned_moves {
-        if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent)?;
+        if let Some(parent) = to.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e.into());
         }
         if let Err(e) = fs::rename(from, to)
             .with_context(|| format!("failed to move {} -> {}", from.display(), to.display()))
@@ -223,6 +229,14 @@ pub(crate) fn cmd_migrate() -> Result<()> {
         // Rollback: reverse all completed moves
         for (orig_from, orig_to) in completed_moves.iter().rev() {
             let _ = fs::rename(orig_to, orig_from);
+        }
+        let restore_settings = crate::misc::Settings {
+            filepath: old_filepath,
+            template: settings.template,
+            test: settings.test,
+        };
+        if let Ok(settings_toml) = toml::to_string_pretty(&restore_settings) {
+            let _ = fs::write(repo_path(crate::SETTINGS_FILE), settings_toml);
         }
         return Err(e);
     }
