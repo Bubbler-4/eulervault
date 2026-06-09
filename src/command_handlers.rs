@@ -180,20 +180,52 @@ pub(crate) fn cmd_migrate() -> Result<()> {
     let new_filepath = prompt_filepath_pattern()?;
 
     let planned_moves = collect_migration_moves(&old_filepath, &new_filepath)?;
+    let mut completed_moves = Vec::new();
+
     for (from, to) in &planned_moves {
         if let Some(parent) = to.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::rename(from, to)
-            .with_context(|| format!("failed to move {} -> {}", from.display(), to.display()))?;
+        if let Err(e) = fs::rename(from, to)
+            .with_context(|| format!("failed to move {} -> {}", from.display(), to.display()))
+        {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e);
+        }
+        completed_moves.push((from.clone(), to.clone()));
     }
 
     settings.filepath = new_filepath;
-    let settings_toml = toml::to_string_pretty(&settings)?;
-    fs::write(repo_path(crate::SETTINGS_FILE), settings_toml)?;
+    let settings_toml = match toml::to_string_pretty(&settings) {
+        Ok(toml) => toml,
+        Err(e) => {
+            // Rollback: reverse all completed moves
+            for (orig_from, orig_to) in completed_moves.iter().rev() {
+                let _ = fs::rename(orig_to, orig_from);
+            }
+            return Err(e.into());
+        }
+    };
+
+    if let Err(e) = fs::write(repo_path(crate::SETTINGS_FILE), settings_toml) {
+        // Rollback: reverse all completed moves
+        for (orig_from, orig_to) in completed_moves.iter().rev() {
+            let _ = fs::rename(orig_to, orig_from);
+        }
+        return Err(e.into());
+    }
 
     let gitignore_pattern = filepath_pattern_to_glob(&settings.filepath);
-    ensure_gitignore_entries(&[gitignore_pattern])?;
+    if let Err(e) = ensure_gitignore_entries(&[gitignore_pattern]) {
+        // Rollback: reverse all completed moves
+        for (orig_from, orig_to) in completed_moves.iter().rev() {
+            let _ = fs::rename(orig_to, orig_from);
+        }
+        return Err(e);
+    }
 
     println!("migrated {} files", planned_moves.len());
     Ok(())
