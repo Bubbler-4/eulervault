@@ -78,6 +78,7 @@ If `[problem]` is provided, `eulervault update [problem]` force re-encrypts that
 ### `eulervault master`
 
 When you want to continue work on a different machine, you can clone your repo and use this command to unlock all solution files at once.
+It uses the stored master password when available, and prompts only if no stored password is found.
 
 ### `eulervault unlock <problem> <solution>`
 
