@@ -139,7 +139,15 @@ pub(crate) fn cmd_update(problem: Option<u32>) -> Result<()> {
 
 pub(crate) fn cmd_master() -> Result<()> {
     let settings = load_settings()?;
-    let password = prompt_password("master password")?;
+    let password = match read_master_password() {
+        Ok(password) => password,
+        Err(err) => {
+            eprintln!(
+                "Warning: Could not read stored master password ({err:#}). Prompting for manual entry."
+            );
+            prompt_password("master password")?
+        }
+    };
 
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
     let decrypted = decrypt_bytes_from_path(&encrypted_solutions, &password)?;
