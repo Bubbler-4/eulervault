@@ -141,7 +141,12 @@ pub(crate) fn cmd_master() -> Result<()> {
     let settings = load_settings()?;
     let password = match read_master_password() {
         Ok(password) => password,
-        Err(_) => prompt_password("master password")?,
+        Err(err) => {
+            eprintln!(
+                "Warning: Could not read stored master password ({err:#}). Prompting for manual entry."
+            );
+            prompt_password("master password")?
+        }
     };
 
     let encrypted_solutions = repo_path(encrypted_name(SOLUTIONS_FILE));
